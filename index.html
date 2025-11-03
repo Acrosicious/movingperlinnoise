@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Infinite Perlin Noise</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #111; }
+        canvas { display: block; }
+        #legendOverlay {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: rgba(30,30,30,0.95);
+            color: #fff;
+            padding: 18px 24px 18px 24px;
+            border-radius: 10px;
+            font-family: sans-serif;
+            font-size: 16px;
+            z-index: 10;
+            box-shadow: 0 2px 12px #0008;
+            max-width: 320px;
+            transition: opacity 0.2s;
+        }
+        #legendOverlay.hide {
+            opacity: 0;
+            pointer-events: none;
+        }
+        #legendToggle {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 11;
+            background: #222;
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            padding: 8px 14px;
+            font-size: 15px;
+            cursor: pointer;
+            box-shadow: 0 1px 6px #0006;
+        }
+        #legendOverlay ul {
+            margin: 0 0 0 18px;
+            padding: 0;
+        }
+        #legendOverlay li {
+            margin-bottom: 6px;
+        }
+    </style>
+</head>
+<body>
+<canvas id="perlinCanvas"></canvas>
+<button id="legendToggle">Legend</button>
+<div id="legendOverlay">
+    <b>Legend for Controls:</b>
+    <ul>
+        <li><b>+</b>: Increase speed</li>
+        <li><b>-</b>: Decrease speed</li>
+        <li><b>1</b>: Move Down</li>
+        <li><b>2</b>: Move Left</li>
+        <li><b>3</b>: Move Up</li>
+        <li><b>4</b>: Move Right</li>
+        <li><b>5</b>: Random direction</li>
+        <li><b>8</b>: Increase scale</li>
+        <li><b>9</b>: Decrease scale</li>
+        <li><b>L</b>: Toggle legend</li>
+    </ul>
+</div>
+<script>
+// Simple Perlin Noise implementation (adapted from https://github.com/joeiddon/perlin)
+const Perlin = (() => {
+    const p = [];
+    for (let i=0; i<256; i++) p[i] = Math.floor(Math.random()*256);
+    const perm = [];
+    for(let i=0; i<512; i++) perm[i]=p[i & 255];
+    function fade(t) { return t*t*t*(t*(t*6-15)+10); }
+    function lerp(a, b, t) { return (1-t)*a + t*b; }
+    function grad(hash, x, y, z) {
+        const h = hash & 15;
+        const u = h<8 ? x : y;
+        const v = h<4 ? y : h===12||h===14 ? x : z;
+        return ((h&1)===0 ? u : -u) + ((h&2)===0 ? v : -v);
+    }
+    return {
+        noise: function(x, y, z) {
+            const X = Math.floor(x)&255, Y = Math.floor(y)&255, Z = Math.floor(z)&255;
+            x -= Math.floor(x); y -= Math.floor(y); z -= Math.floor(z);
+            const u = fade(x), v = fade(y), w = fade(z);
+            const A = perm[X]+Y, AA = perm[A]+Z, AB = perm[A+1]+Z;
+            const B = perm[X+1]+Y, BA = perm[B]+Z, BB = perm[B+1]+Z;
+            return lerp(
+                lerp(
+                    lerp(grad(perm[AA], x, y, z), grad(perm[BA], x-1, y, z), u),
+                    lerp(grad(perm[AB], x, y-1, z), grad(perm[BB], x-1, y-1, z), u),
+                    v
+                ),
+                lerp(
+                    lerp(grad(perm[AA+1], x, y, z-1), grad(perm[BA+1], x-1, y, z-1), u),
+                    lerp(grad(perm[AB+1], x, y-1, z-1), grad(perm[BB+1], x-1, y-1, z-1), u),
+                    v
+                ),
+                w
+            );
+        }
+    };
+})();
+
+const canvas = document.getElementById('perlinCanvas');
+const ctx = canvas.getContext('2d');
+let width = window.innerWidth, height = window.innerHeight;
+canvas.width = width;
+canvas.height = height;
+
+let offCanvas = document.createElement('canvas');
+let res = 0.4;
+function resize() {
+    width = window.innerWidth;
+    height = window.innerHeight;
+    canvas.width = width;
+    canvas.height = height;
+    offCanvas.width = Math.floor(width * res);
+    offCanvas.height = Math.floor(height * res);
+}
+resize();
+window.addEventListener('resize', resize);
+
+let dir = {x: 1, y: 0.0}; // Diagonal movement
+let offset = {x: 0, y: 0};
+let speed = 0.1;
+let scale = 0.03;
+
+function randomDirection() {
+    let angle = Math.random() * Math.PI * 2;
+    dir.x = Math.cos(angle);
+    dir.y = Math.sin(angle);
+}
+
+window.addEventListener('keydown', e => {
+    if (e.key === '+') {
+        speed = Math.min(speed + 0.1, 10);
+    }
+    if (e.key === '-') {
+        speed = Math.max(speed - 0.1, 0.01);
+    }
+    if (e.key === '1') { // Up
+        dir.x = 0; dir.y = -1;
+    }
+    if (e.key === '2') { // Right
+        dir.x = 1; dir.y = 0;
+    }
+    if (e.key === '3') { // Down
+        dir.x = 0; dir.y = 1;
+    }
+    if (e.key === '4') { // Left
+        dir.x = -1; dir.y = 0;
+    }
+    if (e.key === '5') { // Random direction
+        randomDirection();
+    }
+    if (e.key === '8') { // Increase scale
+        scale = Math.min(scale + 0.001, 0.1);
+    }
+    if (e.key === '9') { // Decrease scale
+        scale = Math.max(scale - 0.001, 0.001);
+    }
+    if (e.key.toLowerCase() === 'l') { // Toggle legend
+        toggleLegend();
+    }
+});
+
+let lastTime = performance.now();
+function draw(now) {
+    let dt = Math.min((now - lastTime)/1000, 0.1);
+    lastTime = now;
+    offset.x += dir.x * speed * dt * 60;
+    offset.y += dir.y * speed * dt * 60;
+    let offCtx = offCanvas.getContext('2d');
+    let img = offCtx.createImageData(offCanvas.width, offCanvas.height);
+    let data = img.data;
+    for (let y = 0; y < offCanvas.height; y++) {
+        for (let x = 0; x < offCanvas.width; x++) {
+            let nx = x * scale + offset.x;
+            let ny = y * scale + offset.y;
+            let val = Perlin.noise(nx, ny, 0);
+            let c = Math.floor((val + 1) * 127.5);
+            let i = (y * offCanvas.width + x) * 4;
+            data[i] = data[i+1] = data[i+2] = c;
+            data[i+3] = 255;
+        }
+    }
+    offCtx.putImageData(img, 0, 0);
+    ctx.imageSmoothingEnabled = true;
+    ctx.clearRect(0, 0, width, height);
+    ctx.drawImage(offCanvas, 0, 0, width, height);
+    requestAnimationFrame(draw);
+}
+requestAnimationFrame(draw);
+
+// Legende
+const legendOverlay = document.getElementById('legendOverlay');
+const legendToggle = document.getElementById('legendToggle');
+legendToggle.onclick = toggleLegend;
+function toggleLegend() {
+    legendOverlay.classList.toggle('hide');
+    legendToggle.textContent = legendOverlay.classList.contains('hide') ? 'Show Legend' : 'Legend';
+}
+</script>
+</body>
+</html>
